@@ -6,6 +6,8 @@ for unit in \
     podman.socket \
     firewalld.service \
     fstrim.timer \
+    tuned.service \
+    tuned-ppd.service \
     power-profiles-daemon.service \
     systemd-oomd.service; do
     if systemctl list-unit-files "${unit}" >/dev/null 2>&1; then

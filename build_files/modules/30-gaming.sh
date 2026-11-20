@@ -14,8 +14,8 @@ dnf5 install -y \
     lutris \
     wine-core \
     winetricks \
-    SDL2 \
-    SDL2.i686 \
+    sdl2-compat \
+    sdl2-compat.i686 \
     pipewire-alsa \
     pipewire-alsa.i686 \
     pipewire-pulseaudio \
@@ -26,7 +26,10 @@ echo "Installing Steam from rpmfusion-nonfree-steam (enabled strictly for build 
 dnf5 install -y fedora-workstation-repositories || true
 if [[ -f /etc/yum.repos.d/rpmfusion-nonfree-steam.repo ]]; then
     dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=1
-    dnf5 -y --setopt=install_weak_deps=False install steam
+    if ! dnf5 -y --setopt=install_weak_deps=False install steam; then
+        dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=0 || true
+        exit 1
+    fi
     dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=0
 else
     echo "WARNING: rpmfusion-nonfree-steam.repo not found; Steam can be installed via Flathub fallback." >&2

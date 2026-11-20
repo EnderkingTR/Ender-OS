@@ -32,9 +32,12 @@ dnf5 install -y \
     openssh-clients \
     NetworkManager-tui \
     firewalld \
-    power-profiles-daemon \
     python3 \
     python3-pip
+
+if ! rpm -q tuned-ppd power-profiles-daemon >/dev/null 2>&1; then
+    dnf5 install -y tuned tuned-ppd
+fi
 
 echo "Installing developer & UI fonts..."
 dnf5 install -y --skip-unavailable \

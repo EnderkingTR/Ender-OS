@@ -84,7 +84,18 @@ jobs:
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "${GITHUB_ENV}"
 
       - name: Build OCI image (${{ matrix.edition }})
-        run: just build "${{ matrix.edition }}" latest
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! just build "${{ matrix.edition }}" latest 2>&1 | tee /tmp/build.log; then
+            {
+              echo "### Build failure tail (${{ matrix.edition }})"
+              echo '```text'
+              tail -n 60 /tmp/build.log || true
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
 
       - name: Rechunk OCI image for minimal delta updates
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)

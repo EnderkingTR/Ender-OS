@@ -14,14 +14,13 @@ dnf5 -y install \
     xdg-desktop-portal-hyprland
 
 if ! dnf5 -y install hyprpolkitagent; then
-    dnf5 -y install polkit-gnome
+    dnf5 -y install --skip-unavailable polkit-gnome || dnf5 -y install --skip-unavailable lxqt-policykit || true
 fi
 dnf5 -y copr disable lionheartp/Hyprland
 
 echo "Installing Wayland bar, launcher, notifications, and desktop utilities..."
 dnf5 -y install \
     waybar \
-    SwayNotificationCenter \
     rofi \
     kitty \
     thunar \
@@ -41,8 +40,19 @@ dnf5 -y install \
     qt6-qtwayland \
     sddm \
     sddm-wayland-generic \
-    papirus-icon-theme \
     adw-gtk3-theme
+
+if ! dnf5 -y install SwayNotificationCenter; then
+    if dnf5 -y copr enable erikreider/SwayNotificationCenter && dnf5 -y install SwayNotificationCenter; then
+        dnf5 -y copr disable erikreider/SwayNotificationCenter || true
+    else
+        dnf5 -y copr disable erikreider/SwayNotificationCenter || true
+        echo "SwayNotificationCenter unavailable; falling back to mako..."
+        dnf5 -y install --skip-unavailable mako || true
+    fi
+fi
+
+dnf5 -y install --skip-unavailable papirus-icon-theme || true
 
 mkdir -p /usr/lib/sddm/sddm.conf.d
 cat > /usr/lib/sddm/sddm.conf.d/10-ender-wayland.conf <<'EOF'

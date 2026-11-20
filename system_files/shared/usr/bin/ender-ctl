@@ -17,6 +17,7 @@ from typing import Any, Callable, Sequence
 VALID_PROFILES: dict[str, dict[str, Any]] = {
     "gaming": {
         "power_profile": "performance",
+        "tuned_profile": "throughput-performance",
         "scx_scheduler": "scx_lavd",
         "hypr_effects": False,
         "dnd": True,
@@ -24,6 +25,7 @@ VALID_PROFILES: dict[str, dict[str, Any]] = {
     },
     "balanced": {
         "power_profile": "balanced",
+        "tuned_profile": "balanced",
         "scx_scheduler": "scx_bpfland",
         "hypr_effects": True,
         "dnd": False,
@@ -31,6 +33,7 @@ VALID_PROFILES: dict[str, dict[str, Any]] = {
     },
     "dev": {
         "power_profile": "performance",
+        "tuned_profile": "throughput-performance",
         "scx_scheduler": "scx_bpfland",
         "hypr_effects": True,
         "dnd": False,
@@ -38,6 +41,7 @@ VALID_PROFILES: dict[str, dict[str, Any]] = {
     },
     "powersave": {
         "power_profile": "power-saver",
+        "tuned_profile": "powersave",
         "scx_scheduler": None,
         "hypr_effects": False,
         "dnd": False,
@@ -362,6 +366,8 @@ def _set_profile(ctx: AppContext, name: str, dry_run: bool, as_json: bool) -> in
 
     if ctx.which("powerprofilesctl"):
         _run_or_dry(ctx, ["powerprofilesctl", "set", cfg["power_profile"]], dry_run)
+    elif ctx.which("tuned-adm"):
+        _run_or_dry(ctx, ["tuned-adm", "profile", cfg["tuned_profile"]], dry_run)
 
     if cfg["scx_scheduler"] and ctx.which("scxctl"):
         _run_or_dry(ctx, ["scxctl", "switch", "--sched", cfg["scx_scheduler"]], dry_run)
