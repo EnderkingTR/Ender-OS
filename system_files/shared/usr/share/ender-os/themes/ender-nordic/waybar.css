@@ -1,0 +1,10 @@
+/* Ender Nordic — Waybar Theme Tokens */
+@define-color ender_bg rgba(30, 34, 42, 0.90);
+@define-color ender_surface rgba(46, 52, 64, 0.95);
+@define-color ender_border rgba(136, 192, 208, 0.45);
+@define-color ender_fg #eceff4;
+@define-color ender_muted #9aa7bd;
+@define-color ender_accent #88c0d0;
+@define-color ender_secondary #a3be8c;
+@define-color ender_warning #ebcb8b;
+@define-color ender_danger #bf616a;

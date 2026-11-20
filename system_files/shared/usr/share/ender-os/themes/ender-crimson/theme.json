@@ -1,0 +1,16 @@
+{
+  "id": "ender-crimson",
+  "name": "Ender Crimson",
+  "description": "Esports dark charcoal palette with high-contrast crimson and amber accents",
+  "colors": {
+    "bg": "#0c0b0e",
+    "surface": "#18151d",
+    "overlay": "#231e2b",
+    "fg": "#f4f1f8",
+    "muted": "#9a8f9e",
+    "accent": "#ff2a5f",
+    "secondary": "#ffb703",
+    "warning": "#ffb703",
+    "danger": "#ff4d6d"
+  }
+}

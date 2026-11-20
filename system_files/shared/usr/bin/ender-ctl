@@ -1,0 +1,726 @@
+#!/usr/bin/env python3
+"""Ender-OS system, gaming, developer, theme, and atomic image control CLI."""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Callable, Sequence
+
+VALID_PROFILES: dict[str, dict[str, Any]] = {
+    "gaming": {
+        "power_profile": "performance",
+        "scx_scheduler": "scx_lavd",
+        "hypr_effects": False,
+        "dnd": True,
+        "description": "Max performance, low-latency scheduling, minimal compositor overhead",
+    },
+    "balanced": {
+        "power_profile": "balanced",
+        "scx_scheduler": "scx_bpfland",
+        "hypr_effects": True,
+        "dnd": False,
+        "description": "Responsive daily driver with full desktop visuals and balanced thermals",
+    },
+    "dev": {
+        "power_profile": "performance",
+        "scx_scheduler": "scx_bpfland",
+        "hypr_effects": True,
+        "dnd": False,
+        "description": "High CPU throughput for compilation, containers, and local services",
+    },
+    "powersave": {
+        "power_profile": "power-saver",
+        "scx_scheduler": None,
+        "hypr_effects": False,
+        "dnd": False,
+        "description": "Extended laptop battery life with reduced visual effects",
+    },
+}
+
+VALID_EDITIONS = ("hyprland", "hyprland-nvidia", "plasma", "plasma-nvidia")
+IMAGE_REGISTRY_PREFIX = "ghcr.io/enderkingtr/ender-os-"
+DEFAULT_THEME = "ender-obsidian"
+DEFAULT_PROFILE = "balanced"
+
+
+@dataclasses.dataclass
+class CommandResult:
+    """Normalized subprocess execution outcome."""
+
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+RunnerFn = Callable[[Sequence[str], bool], CommandResult]
+WhichFn = Callable[[str], str | None]
+
+
+def default_runner(cmd: Sequence[str], capture: bool = True) -> CommandResult:
+    """Execute a system command cleanly without raising on non-zero return."""
+    try:
+        proc = subprocess.run(
+            list(cmd),
+            check=False,
+            text=True,
+            capture_output=capture,
+        )
+        return CommandResult(
+            returncode=proc.returncode,
+            stdout=proc.stdout or "",
+            stderr=proc.stderr or "",
+        )
+    except OSError as exc:
+        return CommandResult(returncode=127, stderr=str(exc))
+
+
+@dataclasses.dataclass
+class AppContext:
+    """Injectable runtime paths and command runners for testability."""
+
+    home: Path = dataclasses.field(default_factory=Path.home)
+    share_dir: Path = Path("/usr/share/ender-os")
+    os_release_path: Path = Path("/usr/lib/os-release")
+    runner: RunnerFn = default_runner
+    which: WhichFn = shutil.which
+    is_root: Callable[[], bool] = lambda: hasattr(os, "geteuid") and os.geteuid() == 0
+
+    @property
+    def user_config_dir(self) -> Path:
+        return self.home / ".config" / "ender-os"
+
+    @property
+    def profile_file(self) -> Path:
+        return self.user_config_dir / "profile.conf"
+
+    @property
+    def theme_file(self) -> Path:
+        return self.user_config_dir / "theme.conf"
+
+    @property
+    def current_theme_link(self) -> Path:
+        return self.user_config_dir / "current-theme"
+
+    @property
+    def themes_dir(self) -> Path:
+        return self.share_dir / "themes"
+
+    @property
+    def stacks_file(self) -> Path:
+        return self.share_dir / "devboxes" / "stacks.json"
+
+    @property
+    def flatpaks_file(self) -> Path:
+        return self.share_dir / "gaming" / "flatpaks.json"
+
+    @property
+    def image_info_file(self) -> Path:
+        return self.share_dir / "image-info.json"
+
+
+def _read_json(path: Path, default: Any = None) -> Any:
+    if not path.is_file():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def _parse_os_release(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    if not path.is_file():
+        return data
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        data[key.strip()] = val.strip().strip('"').strip("'")
+    return data
+
+
+def _read_text_choice(path: Path, fallback: str) -> str:
+    if not path.is_file():
+        return fallback
+    value = path.read_text(encoding="utf-8").strip()
+    return value or fallback
+
+
+def _run_or_dry(
+    ctx: AppContext, cmd: Sequence[str], dry_run: bool, capture: bool = True
+) -> CommandResult:
+    if dry_run:
+        print(f"[dry-run] {' '.join(cmd)}")
+        return CommandResult(returncode=0)
+    return ctx.runner(cmd, capture)
+
+
+def _with_sudo(ctx: AppContext, cmd: Sequence[str]) -> list[str]:
+    if ctx.is_root():
+        return list(cmd)
+    if ctx.which("sudo"):
+        return ["sudo", *cmd]
+    return list(cmd)
+
+
+def _detect_gpus(ctx: AppContext) -> list[str]:
+    if not ctx.which("lspci"):
+        return []
+    res = ctx.runner(["lspci", "-nn"], True)
+    if res.returncode != 0:
+        return []
+    gpus: list[str] = []
+    for line in res.stdout.splitlines():
+        upper = line.upper()
+        if "VGA" in upper or "3D CONTROLLER" in upper or "DISPLAY CONTROLLER" in upper:
+            gpus.append(line.strip())
+    return gpus
+
+
+def _get_zram_summary() -> str | None:
+    zram_stat = Path("/sys/block/zram0/mm_stat")
+    if not zram_stat.is_file():
+        return None
+    try:
+        parts = zram_stat.read_text(encoding="utf-8").split()
+        if len(parts) >= 3:
+            orig_mb = int(parts[0]) / (1024 * 1024)
+            compr_mb = int(parts[1]) / (1024 * 1024)
+            return f"active ({orig_mb:.1f} MiB -> {compr_mb:.1f} MiB compressed)"
+    except (OSError, ValueError):
+        return "active"
+    return "active"
+
+
+def _get_bootc_status(ctx: AppContext) -> dict[str, Any] | None:
+    if not ctx.which("bootc"):
+        return None
+    res = ctx.runner(["bootc", "status", "--json"], True)
+    if res.returncode != 0 or not res.stdout.strip():
+        return None
+    try:
+        return json.loads(res.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _available_themes(ctx: AppContext) -> list[dict[str, Any]]:
+    themes: list[dict[str, Any]] = []
+    if not ctx.themes_dir.is_dir():
+        return themes
+    for entry in sorted(ctx.themes_dir.iterdir()):
+        meta_file = entry / "theme.json"
+        if entry.is_dir() and meta_file.is_file():
+            meta = _read_json(meta_file, {}) or {}
+            themes.append(
+                {
+                    "id": meta.get("id", entry.name),
+                    "name": meta.get("name", entry.name),
+                    "description": meta.get("description", ""),
+                    "path": str(entry),
+                }
+            )
+    return themes
+
+
+def _link_theme_dir(target: Path, link_path: Path) -> None:
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    if link_path.is_symlink() or link_path.is_file():
+        link_path.unlink()
+    elif link_path.is_dir():
+        shutil.rmtree(link_path)
+    try:
+        link_path.symlink_to(target, target_is_directory=True)
+    except OSError:
+        # Windows unit tests without Developer Mode cannot create symlinks; copy there only.
+        if os.name == "nt":
+            shutil.copytree(target, link_path)
+        else:
+            raise
+
+
+def _notify_user(ctx: AppContext, title: str, body: str, dry_run: bool) -> None:
+    if dry_run or not ctx.which("notify-send"):
+        return
+    ctx.runner(["notify-send", "-a", "Ender-OS", title, body], True)
+
+
+def _apply_hypr_profile(ctx: AppContext, effects_enabled: bool, dnd: bool, dry_run: bool) -> None:
+    if ctx.which("hyprctl") and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        val = "1" if effects_enabled else "0"
+        cmds = [
+            ["hyprctl", "keyword", "animations:enabled", val],
+            ["hyprctl", "keyword", "decoration:blur:enabled", val],
+            ["hyprctl", "keyword", "decoration:shadow:enabled", val],
+        ]
+        for cmd in cmds:
+            _run_or_dry(ctx, cmd, dry_run)
+    if ctx.which("swaync-client"):
+        dnd_flag = "-dn" if dnd else "-df"
+        _run_or_dry(ctx, ["swaync-client", dnd_flag], dry_run)
+
+
+def _reload_theme_clients(ctx: AppContext, dry_run: bool) -> None:
+    if ctx.which("hyprctl") and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        _run_or_dry(ctx, ["hyprctl", "reload"], dry_run)
+    if ctx.which("pkill"):
+        _run_or_dry(ctx, ["pkill", "-SIGUSR2", "waybar"], dry_run)
+        _run_or_dry(ctx, ["pkill", "-SIGUSR1", "kitty"], dry_run)
+
+
+def cmd_status(ctx: AppContext, args: argparse.Namespace) -> int:
+    image_info = _read_json(ctx.image_info_file, {}) or {}
+    os_release = _parse_os_release(ctx.os_release_path)
+    active_profile = _read_text_choice(ctx.profile_file, DEFAULT_PROFILE)
+    active_theme = _read_text_choice(ctx.theme_file, DEFAULT_THEME)
+    bootc_info = _get_bootc_status(ctx)
+
+    payload: dict[str, Any] = {
+        "os": os_release.get("PRETTY_NAME", image_info.get("name", "Ender-OS")),
+        "image_name": image_info.get("image_name", "ender-os"),
+        "edition": image_info.get("edition", "unknown"),
+        "gpu_stack": image_info.get("gpu_stack", "unknown"),
+        "version": image_info.get("version", os_release.get("OSTREE_VERSION", "dev")),
+        "image_ref": image_info.get("image_ref", "unknown"),
+        "kernel": platform.release(),
+        "arch": platform.machine(),
+        "profile": active_profile,
+        "theme": active_theme,
+        "ntsync": Path("/dev/ntsync").exists(),
+        "zram": _get_zram_summary(),
+        "gpus": _detect_gpus(ctx),
+        "bootc_available": bootc_info is not None,
+    }
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print(f"OS:       {payload['os']}")
+    print(f"Image:    {payload['image_name']} ({payload['version']})")
+    print(f"Kernel:   {payload['kernel']} ({payload['arch']})")
+    print(f"Profile:  {payload['profile']}")
+    print(f"Theme:    {payload['theme']}")
+    print(f"NTSYNC:   {'enabled' if payload['ntsync'] else 'not detected'}")
+    print(f"ZRAM:     {payload['zram'] or 'not active'}")
+    if payload["gpus"]:
+        for idx, gpu in enumerate(payload["gpus"], start=1):
+            print(f"GPU {idx}:    {gpu}")
+    else:
+        print("GPU:      unknown (lspci unavailable)")
+    return 0
+
+
+def cmd_profile(ctx: AppContext, args: argparse.Namespace) -> int:
+    action = args.profile_action
+    if action == "show":
+        current = _read_text_choice(ctx.profile_file, DEFAULT_PROFILE)
+        if getattr(args, "short", False):
+            print(current)
+            return 0
+        meta = VALID_PROFILES.get(current, {})
+        if args.json:
+            print(json.dumps({"profile": current, **meta}, indent=2))
+            return 0
+        print(f"Active profile: {current}")
+        if meta:
+            print(f"Description:    {meta['description']}")
+        return 0
+
+    if action == "toggle-gaming":
+        current = _read_text_choice(ctx.profile_file, DEFAULT_PROFILE)
+        target = "balanced" if current == "gaming" else "gaming"
+        return _set_profile(ctx, target, dry_run=args.dry_run, as_json=False)
+
+    if action == "set":
+        return _set_profile(ctx, args.name, dry_run=args.dry_run, as_json=args.json)
+
+    return 1
+
+
+def _set_profile(ctx: AppContext, name: str, dry_run: bool, as_json: bool) -> int:
+    if name not in VALID_PROFILES:
+        print(
+            f"Unknown profile '{name}'. Choose from: {', '.join(VALID_PROFILES)}",
+            file=sys.stderr,
+        )
+        return 2
+
+    cfg = VALID_PROFILES[name]
+    if not dry_run:
+        ctx.user_config_dir.mkdir(parents=True, exist_ok=True)
+        ctx.profile_file.write_text(f"{name}\n", encoding="utf-8")
+
+    if ctx.which("powerprofilesctl"):
+        _run_or_dry(ctx, ["powerprofilesctl", "set", cfg["power_profile"]], dry_run)
+
+    if cfg["scx_scheduler"] and ctx.which("scxctl"):
+        _run_or_dry(ctx, ["scxctl", "switch", "--sched", cfg["scx_scheduler"]], dry_run)
+
+    _apply_hypr_profile(ctx, cfg["hypr_effects"], cfg["dnd"], dry_run)
+    _notify_user(ctx, f"Profile: {name}", cfg["description"], dry_run)
+
+    if as_json:
+        print(json.dumps({"profile": name, "dry_run": dry_run, **cfg}, indent=2))
+    else:
+        print(f"Profile set to '{name}' ({cfg['description']}).")
+    return 0
+
+
+def cmd_theme(ctx: AppContext, args: argparse.Namespace) -> int:
+    action = args.theme_action
+    themes = _available_themes(ctx)
+    by_id = {t["id"]: t for t in themes}
+
+    if action == "list":
+        current = _read_text_choice(ctx.theme_file, DEFAULT_THEME)
+        if getattr(args, "plain", False):
+            for theme in themes:
+                print(theme["id"])
+            return 0
+        if args.json:
+            print(json.dumps({"current": current, "themes": themes}, indent=2))
+            return 0
+        for theme in themes:
+            marker = "*" if theme["id"] == current else " "
+            print(f"{marker} {theme['id']:<16} {theme['name']} — {theme['description']}")
+        return 0
+
+    if action == "current":
+        current = _read_text_choice(ctx.theme_file, DEFAULT_THEME)
+        if args.json:
+            print(json.dumps({"current": current, **by_id.get(current, {})}, indent=2))
+        else:
+            print(current)
+        return 0
+
+    if action in ("set", "reset"):
+        target_name = DEFAULT_THEME if action == "reset" else args.name
+        if target_name not in by_id:
+            available = ", ".join(by_id.keys()) or "(none found)"
+            print(
+                f"Unknown theme '{target_name}'. Available themes: {available}",
+                file=sys.stderr,
+            )
+            return 2
+        target_dir = Path(by_id[target_name]["path"])
+        if args.dry_run:
+            print(f"[dry-run] link {ctx.current_theme_link} -> {target_dir}")
+        else:
+            ctx.user_config_dir.mkdir(parents=True, exist_ok=True)
+            ctx.theme_file.write_text(f"{target_name}\n", encoding="utf-8")
+            _link_theme_dir(target_dir, ctx.current_theme_link)
+        _reload_theme_clients(ctx, args.dry_run)
+        _notify_user(ctx, "Theme Applied", by_id[target_name]["name"], args.dry_run)
+        print(f"Theme set to '{target_name}'.")
+        return 0
+
+    return 1
+
+
+def _load_stacks(ctx: AppContext) -> dict[str, dict[str, Any]]:
+    data = _read_json(ctx.stacks_file, {}) or {}
+    return data.get("stacks", {})
+
+
+def cmd_devbox(ctx: AppContext, args: argparse.Namespace) -> int:
+    action = args.devbox_action
+    stacks = _load_stacks(ctx)
+
+    if action == "list":
+        if args.json:
+            print(json.dumps({"stacks": stacks}, indent=2))
+            return 0
+        for key, spec in stacks.items():
+            print(f"- {key:<10} ({spec.get('name', key)}) — {spec.get('description', '')}")
+        return 0
+
+    if action == "create":
+        if args.stack not in stacks:
+            print(
+                f"Unknown stack '{args.stack}'. Available: {', '.join(stacks.keys())}",
+                file=sys.stderr,
+            )
+            return 2
+        if not args.dry_run and not ctx.which("distrobox"):
+            print("distrobox is not installed on this host.", file=sys.stderr)
+            return 1
+        spec = stacks[args.stack]
+        box_name = args.name or spec.get("name", f"ender-{args.stack}")
+        cmd = [
+            "distrobox",
+            "create",
+            "--yes",
+            "--name",
+            box_name,
+            "--image",
+            spec["image"],
+        ]
+        pkgs = spec.get("init_packages") or []
+        if pkgs:
+            cmd.extend(["--additional-packages", " ".join(pkgs)])
+        res = _run_or_dry(ctx, cmd, args.dry_run, capture=False)
+        if res.returncode != 0:
+            return res.returncode
+        exports = spec.get("export_binaries") or []
+        for bin_name in exports:
+            export_cmd = [
+                "distrobox",
+                "enter",
+                box_name,
+                "--",
+                "distrobox-export",
+                "--bin",
+                f"/usr/bin/{bin_name}",
+                "--export-path",
+                str(ctx.home / ".local" / "bin"),
+            ]
+            _run_or_dry(ctx, export_cmd, args.dry_run)
+        print(f"Devbox '{box_name}' ready. Enter with: ender-ctl devbox enter {box_name}")
+        return 0
+
+    if action == "enter":
+        return _run_or_dry(ctx, ["distrobox", "enter", args.name], args.dry_run, capture=False).returncode
+
+    if action == "remove":
+        return _run_or_dry(ctx, ["distrobox", "rm", "--force", args.name], args.dry_run, capture=False).returncode
+
+    return 1
+
+
+def cmd_gaming(ctx: AppContext, args: argparse.Namespace) -> int:
+    action = args.gaming_action
+    if action == "check":
+        checks = {
+            "steam": ctx.which("steam") is not None,
+            "lutris": ctx.which("lutris") is not None,
+            "gamescope": ctx.which("gamescope") is not None,
+            "gamemoderun": ctx.which("gamemoderun") is not None,
+            "mangohud": ctx.which("mangohud") is not None,
+            "vulkaninfo": ctx.which("vulkaninfo") is not None,
+            "ntsync_device": Path("/dev/ntsync").exists(),
+        }
+        if args.json:
+            print(json.dumps(checks, indent=2))
+            return 0
+        for name, ok in checks.items():
+            state = "OK" if ok else "MISSING"
+            print(f"[{state:<7}] {name}")
+        return 0
+
+    if action == "setup":
+        catalog = _read_json(ctx.flatpaks_file, {}) or {}
+        groups = catalog.get("groups", {})
+        remote = catalog.get("remote", "flathub")
+        remote_url = catalog.get("remote_url", "https://dl.flathub.org/repo/flathub.flatpakrepo")
+        selected = list(groups.keys()) if args.group == "all" else [args.group]
+
+        apps: list[dict[str, str]] = []
+        for grp in selected:
+            if grp not in groups:
+                print(
+                    f"Unknown Flatpak group '{grp}'. Available: {', '.join(groups.keys())}",
+                    file=sys.stderr,
+                )
+                return 2
+            apps.extend(groups[grp])
+
+        if not args.dry_run and not ctx.which("flatpak"):
+            print("flatpak is not installed on this host.", file=sys.stderr)
+            return 1
+
+        _run_or_dry(
+            ctx,
+            ["flatpak", "remote-add", "--if-not-exists", remote, remote_url],
+            args.dry_run,
+            capture=False,
+        )
+        app_ids = [app["id"] for app in apps]
+        if app_ids:
+            res = _run_or_dry(
+                ctx,
+                ["flatpak", "install", "-y", "--noninteractive", remote, *app_ids],
+                args.dry_run,
+                capture=False,
+            )
+            return res.returncode
+        return 0
+
+    return 1
+
+
+def _require_bootc(ctx: AppContext, dry_run: bool) -> bool:
+    if dry_run or ctx.which("bootc"):
+        return True
+    print("bootc CLI not found (run this command on an installed Ender-OS atomic host).", file=sys.stderr)
+    return False
+
+
+def cmd_update(ctx: AppContext, args: argparse.Namespace) -> int:
+    if not _require_bootc(ctx, args.dry_run):
+        return 1
+    cmd = _with_sudo(ctx, ["bootc", "upgrade"])
+    return _run_or_dry(ctx, cmd, args.dry_run, capture=False).returncode
+
+
+def cmd_rollback(ctx: AppContext, args: argparse.Namespace) -> int:
+    if not _require_bootc(ctx, args.dry_run):
+        return 1
+    cmd = _with_sudo(ctx, ["bootc", "rollback"])
+    return _run_or_dry(ctx, cmd, args.dry_run, capture=False).returncode
+
+
+def cmd_switch(ctx: AppContext, args: argparse.Namespace) -> int:
+    if args.edition not in VALID_EDITIONS:
+        print(
+            f"Unknown edition '{args.edition}'. Choose from: {', '.join(VALID_EDITIONS)}",
+            file=sys.stderr,
+        )
+        return 2
+    if not _require_bootc(ctx, args.dry_run):
+        return 1
+    target_ref = f"{IMAGE_REGISTRY_PREFIX}{args.edition}:{args.tag}"
+    cmd = _with_sudo(ctx, ["bootc", "switch", target_ref])
+    return _run_or_dry(ctx, cmd, args.dry_run, capture=False).returncode
+
+
+def cmd_doctor(ctx: AppContext, args: argparse.Namespace) -> int:
+    checks = [
+        ("image_metadata", ctx.image_info_file.is_file(), "warn", str(ctx.image_info_file)),
+        ("bootc", ctx.which("bootc") is not None, "warn", "Atomic OS upgrade engine"),
+        ("podman", ctx.which("podman") is not None, "fail", "Rootless OCI container runtime"),
+        ("distrobox", ctx.which("distrobox") is not None, "warn", "Isolated developer containers"),
+        ("vulkaninfo", ctx.which("vulkaninfo") is not None, "warn", "Vulkan graphics diagnostics"),
+        ("gamescope", ctx.which("gamescope") is not None, "warn", "Valve micro-compositor"),
+        ("mangohud", ctx.which("mangohud") is not None, "warn", "Performance overlay"),
+        ("flatpak", ctx.which("flatpak") is not None, "warn", "Sandboxed desktop apps"),
+        ("ntsync_kernel", Path("/dev/ntsync").exists(), "warn", "Kernel Wine/Proton synchronization"),
+        ("zram_swap", _get_zram_summary() is not None, "warn", "Compressed RAM swap"),
+    ]
+    results = []
+    has_failure = False
+    for name, ok, severity, detail in checks:
+        status = "pass" if ok else severity
+        if status == "fail":
+            has_failure = True
+        results.append({"check": name, "status": status, "detail": detail})
+
+    if args.json:
+        print(json.dumps({"checks": results, "healthy": not has_failure}, indent=2))
+    else:
+        for item in results:
+            print(f"[{item['status'].upper():<4}] {item['check']:<16} {item['detail']}")
+    return 1 if has_failure else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ender-ctl",
+        description="Ender-OS control CLI for system status, performance profiles, themes, devboxes, and bootc updates.",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_status = sub.add_parser("status", help="Show system, GPU, profile, and theme summary")
+    p_status.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    p_profile = sub.add_parser("profile", help="Inspect or switch performance profiles")
+    p_profile_sub = p_profile.add_subparsers(dest="profile_action", required=True)
+    p_prof_show = p_profile_sub.add_parser("show", help="Show current profile")
+    p_prof_show.add_argument("--short", action="store_true", help="Print profile name only")
+    p_prof_show.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_prof_set = p_profile_sub.add_parser("set", help="Activate a performance profile")
+    p_prof_set.add_argument("name", help="Profile name (gaming, balanced, dev, powersave)")
+    p_prof_set.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+    p_prof_set.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_prof_toggle = p_profile_sub.add_parser("toggle-gaming", help="Toggle between gaming and balanced")
+    p_prof_toggle.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+
+    p_theme = sub.add_parser("theme", help="List or switch Ender-OS visual themes")
+    p_theme_sub = p_theme.add_subparsers(dest="theme_action", required=True)
+    p_theme_list = p_theme_sub.add_parser("list", help="List available themes")
+    p_theme_list.add_argument("--plain", action="store_true", help="Print theme IDs one per line")
+    p_theme_list.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_theme_cur = p_theme_sub.add_parser("current", help="Show active theme")
+    p_theme_cur.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_theme_set = p_theme_sub.add_parser("set", help="Activate a theme")
+    p_theme_set.add_argument("name", help="Theme ID")
+    p_theme_set.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+    p_theme_reset = p_theme_sub.add_parser("reset", help="Reset to default theme")
+    p_theme_reset.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
+
+    p_devbox = sub.add_parser("devbox", help="Manage curated Distrobox developer containers")
+    p_devbox_sub = p_devbox.add_subparsers(dest="devbox_action", required=True)
+    p_dev_list = p_devbox_sub.add_parser("list", help="List curated devbox stacks")
+    p_dev_list.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_dev_create = p_devbox_sub.add_parser("create", help="Create a devbox from a curated stack")
+    p_dev_create.add_argument("stack", help="Stack ID (rust, web, python, cpp, arch-lab)")
+    p_dev_create.add_argument("--name", help="Override container name")
+    p_dev_create.add_argument("--dry-run", action="store_true", help="Print commands without creating")
+    p_dev_enter = p_devbox_sub.add_parser("enter", help="Enter an existing devbox")
+    p_dev_enter.add_argument("name", help="Container name")
+    p_dev_enter.add_argument("--dry-run", action="store_true", help="Preview command")
+    p_dev_rm = p_devbox_sub.add_parser("remove", help="Remove a devbox container")
+    p_dev_rm.add_argument("name", help="Container name")
+    p_dev_rm.add_argument("--dry-run", action="store_true", help="Preview command")
+
+    p_gaming = sub.add_parser("gaming", help="Verify gaming runtime or install curated Flatpaks")
+    p_gaming_sub = p_gaming.add_subparsers(dest="gaming_action", required=True)
+    p_g_check = p_gaming_sub.add_parser("check", help="Check installed gaming components")
+    p_g_check.add_argument("--json", action="store_true", help="Emit JSON output")
+    p_g_setup = p_gaming_sub.add_parser("setup", help="Install curated Flathub apps")
+    p_g_setup.add_argument(
+        "--group",
+        default="gaming",
+        choices=("gaming", "dev", "media", "all"),
+        help="Flatpak group to install",
+    )
+    p_g_setup.add_argument("--dry-run", action="store_true", help="Preview Flatpak commands")
+
+    p_update = sub.add_parser("update", help="Upgrade atomic OS image via bootc")
+    p_update.add_argument("--dry-run", action="store_true", help="Preview bootc command")
+
+    p_rollback = sub.add_parser("rollback", help="Roll back to previous atomic deployment")
+    p_rollback.add_argument("--dry-run", action="store_true", help="Preview bootc command")
+
+    p_switch = sub.add_parser("switch", help="Switch between Ender-OS editions")
+    p_switch.add_argument("edition", help="Target edition (hyprland, hyprland-nvidia, plasma, plasma-nvidia)")
+    p_switch.add_argument("--tag", default="latest", help="OCI image tag (default: latest)")
+    p_switch.add_argument("--dry-run", action="store_true", help="Preview bootc command")
+
+    p_doctor = sub.add_parser("doctor", help="Run Ender-OS system diagnostics")
+    p_doctor.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None, ctx: AppContext | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    app_ctx = ctx or AppContext()
+
+    handlers = {
+        "status": cmd_status,
+        "profile": cmd_profile,
+        "theme": cmd_theme,
+        "devbox": cmd_devbox,
+        "gaming": cmd_gaming,
+        "update": cmd_update,
+        "rollback": cmd_rollback,
+        "switch": cmd_switch,
+        "doctor": cmd_doctor,
+    }
+    handler = handlers[args.command]
+    return handler(app_ctx, args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

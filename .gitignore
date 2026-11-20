@@ -1,0 +1,14 @@
+output/
+_build*
+*_build*
+*.iso
+*.qcow2
+*.raw
+*.img
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+cosign.key
+.DS_Store
+Thumbs.db

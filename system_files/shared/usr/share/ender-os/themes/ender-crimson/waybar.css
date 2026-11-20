@@ -1,0 +1,10 @@
+/* Ender Crimson — Waybar Theme Tokens */
+@define-color ender_bg rgba(12, 11, 14, 0.90);
+@define-color ender_surface rgba(24, 21, 29, 0.95);
+@define-color ender_border rgba(255, 42, 95, 0.50);
+@define-color ender_fg #f4f1f8;
+@define-color ender_muted #9a8f9e;
+@define-color ender_accent #ff2a5f;
+@define-color ender_secondary #ffb703;
+@define-color ender_warning #ffb703;
+@define-color ender_danger #ff4d6d;

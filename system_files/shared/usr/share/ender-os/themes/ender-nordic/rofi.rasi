@@ -1,0 +1,10 @@
+/* Ender Nordic — Rofi Colorscheme */
+* {
+    bg: #1e222aee;
+    surface: #2e3440;
+    fg: #eceff4;
+    muted: #9aa7bd;
+    accent: #88c0d0;
+    secondary: #81a1c1;
+    border: #88c0d0aa;
+}

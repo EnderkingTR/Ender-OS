@@ -1,0 +1,16 @@
+{
+  "id": "ender-obsidian",
+  "name": "Ender Obsidian",
+  "description": "Deep obsidian night palette with electric violet and neon cyan accents",
+  "colors": {
+    "bg": "#0d0d14",
+    "surface": "#161622",
+    "overlay": "#1f1f30",
+    "fg": "#eceff4",
+    "muted": "#8f93b0",
+    "accent": "#9b5de5",
+    "secondary": "#00f5d4",
+    "warning": "#ffb703",
+    "danger": "#ff2a5f"
+  }
+}

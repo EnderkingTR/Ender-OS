@@ -1,0 +1,62 @@
+{
+  "remote": "flathub",
+  "remote_url": "https://dl.flathub.org/repo/flathub.flatpakrepo",
+  "groups": {
+    "gaming": [
+      {
+        "id": "net.davidotek.pupgui2",
+        "name": "ProtonUp-Qt",
+        "description": "Install and manage Proton-GE, Wine-GE, and Luxtorpeda compatibility tools"
+      },
+      {
+        "id": "com.heroicgameslauncher.hgl",
+        "name": "Heroic Games Launcher",
+        "description": "Open-source Epic Games, GOG, and Amazon Prime Gaming launcher"
+      },
+      {
+        "id": "com.github.Matoking.protontricks",
+        "name": "Protontricks",
+        "description": "Winetricks wrapper for Proton game prefixes"
+      },
+      {
+        "id": "com.usebottles.bottles",
+        "name": "Bottles",
+        "description": "Run Windows apps and standalone game installers cleanly in sandboxes"
+      },
+      {
+        "id": "io.github.radiolamp.mangojuice",
+        "name": "MangoJuice",
+        "description": "Graphical MangoHud performance overlay configurator"
+      }
+    ],
+    "dev": [
+      {
+        "id": "dev.zed.Zed",
+        "name": "Zed Editor",
+        "description": "High-performance GPU-accelerated code editor"
+      },
+      {
+        "id": "com.vscodium.codium",
+        "name": "VSCodium",
+        "description": "Open-source VS Code distribution without telemetry"
+      },
+      {
+        "id": "io.podman_desktop.PodmanDesktop",
+        "name": "Podman Desktop",
+        "description": "Graphical manager for containers, Compose stacks, and Kubernetes"
+      }
+    ],
+    "media": [
+      {
+        "id": "com.obsproject.Studio",
+        "name": "OBS Studio",
+        "description": "Low-latency screen recording and game streaming"
+      },
+      {
+        "id": "dev.vencord.Vesktop",
+        "name": "Vesktop",
+        "description": "Wayland-native Discord client with audio screen sharing"
+      }
+    ]
+  }
+}

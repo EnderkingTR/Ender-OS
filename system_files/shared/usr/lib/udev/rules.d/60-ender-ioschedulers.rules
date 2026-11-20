@@ -1,0 +1,9 @@
+# Ender-OS Storage I/O Scheduler Policy
+# NVMe SSDs: bypass block-layer scheduler for minimal latency
+ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none"
+
+# Non-rotational SATA/SAS SSDs: low-latency deadline scheduling
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+
+# Rotational HDDs: fair queuing for desktop responsiveness
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Ender-OS Gaming Console (Gamescope)
+Comment=Launch Steam Big Picture directly inside a low-latency Gamescope micro-compositor
+Exec=/usr/bin/ender-gamescope-session
+Type=Application
+DesktopNames=gamescope

@@ -1,0 +1,2 @@
+# Allow active desktop/gaming user sessions to open /dev/ntsync
+KERNEL=="ntsync", MODE="0660", TAG+="uaccess"

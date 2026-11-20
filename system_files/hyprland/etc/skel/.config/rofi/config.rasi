@@ -1,0 +1,44 @@
+@import "~/.config/ender-os/current-theme/rofi.rasi"
+
+configuration {
+    modi: "drun,run,window";
+    show-icons: true;
+    font: "JetBrains Mono 11";
+    display-drun: "Apps";
+    display-run: "Run";
+    display-window: "Windows";
+}
+
+window {
+    background-color: @bg;
+    border: 2px solid;
+    border-color: @border;
+    border-radius: 12px;
+    width: 560px;
+    padding: 14px;
+}
+
+inputbar {
+    background-color: @surface;
+    text-color: @fg;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 0 0 10px 0;
+}
+
+listview {
+    lines: 8;
+    columns: 1;
+    scrollbar: false;
+}
+
+element {
+    padding: 8px 10px;
+    border-radius: 8px;
+    text-color: @fg;
+}
+
+element selected {
+    background-color: @accent;
+    text-color: @surface;
+}

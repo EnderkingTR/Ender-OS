@@ -1,0 +1,59 @@
+@import "../ender-os/current-theme/waybar.css";
+
+* {
+    font-family: "JetBrains Mono", "Inter", sans-serif;
+    font-size: 12.5px;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+}
+
+window#waybar {
+    background: transparent;
+    color: @ender_fg;
+}
+
+.modules-left,
+.modules-center,
+.modules-right {
+    background: @ender_bg;
+    border: 1px solid @ender_border;
+    border-radius: 10px;
+    padding: 2px 10px;
+}
+
+#custom-launcher {
+    color: @ender_accent;
+    font-size: 15px;
+    padding: 0 8px 0 4px;
+}
+
+#workspaces button {
+    color: @ender_muted;
+    padding: 0 6px;
+    margin: 2px;
+    border-radius: 6px;
+}
+
+#workspaces button.active {
+    background: @ender_accent;
+    color: #0d0d14;
+    font-weight: bold;
+}
+
+#custom-profile {
+    color: @ender_secondary;
+    font-weight: 600;
+    padding: 0 8px;
+}
+
+#cpu,
+#memory,
+#pulseaudio,
+#network,
+#battery,
+#clock,
+#tray,
+#custom-notifications {
+    padding: 0 7px;
+}

@@ -1,0 +1,12 @@
+[Windows]
+AllowTearing=true
+
+[Wayland]
+VirtualKeyboardEnabled=true
+
+[Compositing]
+AllowTearing=true
+LatencyPolicy=Low
+
+[Plugins]
+contrastEnabled=true

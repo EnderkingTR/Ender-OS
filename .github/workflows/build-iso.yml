@@ -1,0 +1,144 @@
+name: Build Ender-OS ISO & VM Disks
+
+on:
+  workflow_dispatch:
+    inputs:
+      edition:
+        description: "Target Ender-OS edition"
+        required: true
+        default: "hyprland"
+        type: choice
+        options:
+          - hyprland
+          - hyprland-nvidia
+          - plasma
+          - plasma-nvidia
+      disk_type:
+        description: "Disk artifact type"
+        required: true
+        default: "anaconda-iso"
+        type: choice
+        options:
+          - anaconda-iso
+          - qcow2
+      tag:
+        description: "Source OCI image tag in GHCR"
+        required: true
+        default: "latest"
+        type: string
+  release:
+    types: [published]
+
+env:
+  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
+  BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Determine disk build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      editions: ${{ steps.matrix.outputs.editions }}
+      disk_type: ${{ steps.matrix.outputs.disk_type }}
+      tag: ${{ steps.matrix.outputs.tag }}
+    steps:
+      - name: Compute matrix inputs
+        id: matrix
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo 'editions=["hyprland","hyprland-nvidia","plasma","plasma-nvidia"]' >> "${GITHUB_OUTPUT}"
+            echo "disk_type=anaconda-iso" >> "${GITHUB_OUTPUT}"
+            echo "tag=latest" >> "${GITHUB_OUTPUT}"
+          else
+            echo 'editions=["${{ inputs.edition }}"]' >> "${GITHUB_OUTPUT}"
+            echo "disk_type=${{ inputs.disk_type }}" >> "${GITHUB_OUTPUT}"
+            echo "tag=${{ inputs.tag }}" >> "${GITHUB_OUTPUT}"
+          fi
+
+  build-disk:
+    name: Build ${{ needs.plan.outputs.disk_type }} (${{ matrix.edition }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: ${{ fromJson(needs.plan.outputs.editions) }}
+
+    permissions:
+      contents: write
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Maximize runner disk space
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+        with:
+          remove-codeql: true
+
+      - name: Prepare image references
+        shell: bash
+        run: |
+          USER_UID="$(id -u)"
+          USER_GID="$(id -g)"
+          IMAGE_NAME="ender-os-${{ matrix.edition }}"
+          DISK_TYPE="${{ needs.plan.outputs.disk_type }}"
+          if [[ "${DISK_TYPE}" == "anaconda-iso" ]]; then
+            CONFIG_FILE="./disk_config/iso-${{ matrix.edition }}.toml"
+          else
+            CONFIG_FILE="./disk_config/disk.toml"
+          fi
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> "${GITHUB_ENV}"
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "${GITHUB_ENV}"
+          echo "CONFIG_FILE=${CONFIG_FILE}" >> "${GITHUB_ENV}"
+          echo "USER_UID=${USER_UID}" >> "${GITHUB_ENV}"
+          echo "USER_GID=${USER_GID}" >> "${GITHUB_ENV}"
+
+      - name: Build disk image with bootc-image-builder
+        id: bib
+        uses: osbuild/bootc-image-builder-action@8661cd3832544ad68c12dcde8681b13ab0f56a8d
+        with:
+          builder-image: ${{ env.BIB_IMAGE }}
+          config-file: ${{ env.CONFIG_FILE }}
+          image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.plan.outputs.tag }}
+          chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
+          types: ${{ needs.plan.outputs.disk_type }}
+          additional-args: --use-librepo=True
+
+      - name: Rename artifact and generate SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="${{ steps.bib.outputs.output-directory }}"
+          mkdir -p "${OUT_DIR}/release"
+          if [[ "${{ needs.plan.outputs.disk_type }}" == "anaconda-iso" ]]; then
+            mv "${OUT_DIR}/bootiso/install.iso" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.iso"
+          else
+            mv "${OUT_DIR}/qcow2/disk.qcow2" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.qcow2"
+          fi
+          (
+            cd "${OUT_DIR}/release"
+            sha256sum ender-os-* > "ender-os-${{ matrix.edition }}.SHA256SUMS"
+          )
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ender-os-${{ matrix.edition }}-${{ needs.plan.outputs.disk_type }}
+          path: ${{ steps.bib.outputs.output-directory }}/release/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Attach release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.bib.outputs.output-directory }}/release/*

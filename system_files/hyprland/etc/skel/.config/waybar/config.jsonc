@@ -1,0 +1,87 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  "margin-top": 6,
+  "margin-left": 10,
+  "margin-right": 10,
+  "spacing": 6,
+  "modules-left": [
+    "custom/launcher",
+    "hyprland/workspaces",
+    "hyprland/window"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "custom/profile",
+    "cpu",
+    "memory",
+    "pulseaudio",
+    "network",
+    "battery",
+    "tray",
+    "custom/notifications"
+  ],
+  "custom/launcher": {
+    "format": "󰣛",
+    "tooltip-format": "Ender-OS Application Launcher (Super + Space)",
+    "on-click": "rofi -show drun"
+  },
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "on-click": "activate",
+    "sort-by-number": true
+  },
+  "hyprland/window": {
+    "max-length": 42,
+    "separate-outputs": true
+  },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  },
+  "custom/profile": {
+    "exec": "ender-ctl profile show --short",
+    "interval": 5,
+    "format": "󰓅 {}",
+    "tooltip-format": "Click to toggle Gaming Mode (Super + G)",
+    "on-click": "ender-ctl profile toggle-gaming"
+  },
+  "cpu": {
+    "format": " {usage}%",
+    "interval": 2
+  },
+  "memory": {
+    "format": " {used:0.1f}G",
+    "interval": 3
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": "󰝟 muted",
+    "format-icons": {
+      "default": ["", "", ""]
+    },
+    "on-click": "pavucontrol"
+  },
+  "network": {
+    "format-wifi": " {essid}",
+    "format-ethernet": "󰈀 eth",
+    "format-disconnected": "󰖪 offline",
+    "tooltip-format": "{ipaddr}/{cidr}"
+  },
+  "battery": {
+    "format": "{icon} {capacity}%",
+    "format-icons": ["", "", "", "", ""]
+  },
+  "tray": {
+    "spacing": 8
+  },
+  "custom/notifications": {
+    "format": "",
+    "tooltip": false,
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw"
+  }
+}

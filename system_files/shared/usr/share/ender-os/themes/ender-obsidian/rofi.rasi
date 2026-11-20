@@ -1,0 +1,10 @@
+/* Ender Obsidian — Rofi Colorscheme */
+* {
+    bg: #0d0d14ee;
+    surface: #161622;
+    fg: #eceff4;
+    muted: #8f93b0;
+    accent: #9b5de5;
+    secondary: #00f5d4;
+    border: #9b5de5aa;
+}

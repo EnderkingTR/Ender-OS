@@ -1,0 +1,16 @@
+{
+  "id": "ender-nordic",
+  "name": "Ender Nordic",
+  "description": "Arctic slate palette with crisp frost cyan and glacier blue highlights",
+  "colors": {
+    "bg": "#1e222a",
+    "surface": "#2e3440",
+    "overlay": "#3b4252",
+    "fg": "#eceff4",
+    "muted": "#9aa7bd",
+    "accent": "#88c0d0",
+    "secondary": "#81a1c1",
+    "warning": "#ebcb8b",
+    "danger": "#bf616a"
+  }
+}

@@ -1,0 +1,10 @@
+/* Ender Obsidian — Waybar Theme Tokens */
+@define-color ender_bg rgba(13, 13, 20, 0.88);
+@define-color ender_surface rgba(22, 22, 34, 0.94);
+@define-color ender_border rgba(155, 93, 229, 0.45);
+@define-color ender_fg #eceff4;
+@define-color ender_muted #8f93b0;
+@define-color ender_accent #9b5de5;
+@define-color ender_secondary #00f5d4;
+@define-color ender_warning #ffb703;
+@define-color ender_danger #ff2a5f;

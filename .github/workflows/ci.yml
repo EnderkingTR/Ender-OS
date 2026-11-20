@@ -1,0 +1,43 @@
+name: CI Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate Scripts, Configs, and CLI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck python3
+
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3
+
+      - name: Validate Justfile syntax
+        run: just --list >/dev/null
+
+      - name: Run ShellCheck on all shell scripts
+        run: |
+          shellcheck \
+            build_files/build.sh \
+            build_files/modules/*.sh \
+            system_files/shared/usr/bin/ender-gamescope-session \
+            system_files/nvidia/etc/profile.d/*.sh
+
+      - name: Validate repository structure and config files
+        run: python3 tests/validate_repo.py
+
+      - name: Run ender-ctl unit tests
+        run: python3 -m unittest discover -s tests -v

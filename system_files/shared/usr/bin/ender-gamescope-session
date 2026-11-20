@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export STEAM_MULTIPLE_XWAYLANDS=1
+export ENABLE_GAMESCOPE_WSI=1
+
+if command -v steam >/dev/null 2>&1; then
+    STEAM_CMD=(steam -gamepadui -steamos3)
+elif command -v flatpak >/dev/null 2>&1 && flatpak info com.valvesoftware.Steam >/dev/null 2>&1; then
+    STEAM_CMD=(flatpak run com.valvesoftware.Steam -gamepadui -steamos3)
+else
+    echo "Steam is not installed on this system." >&2
+    exit 1
+fi
+
+if ! command -v gamescope >/dev/null 2>&1; then
+    exec "${STEAM_CMD[@]}"
+fi
+
+GAMESCOPE_ARGS=(
+    -e
+    -f
+    --adaptive-sync
+)
+
+# Enable MangoHud overlay inside Gamescope when available
+if command -v mangoapp >/dev/null 2>&1; then
+    GAMESCOPE_ARGS+=(--mangoapp)
+fi
+
+exec gamescope "${GAMESCOPE_ARGS[@]}" -- "${STEAM_CMD[@]}"

@@ -1,0 +1,102 @@
+{
+  "stacks": {
+    "rust": {
+      "name": "ender-rust",
+      "description": "Rust & Systems programming container (rustup, cargo, clang, lld, mold, cmake, gdb)",
+      "image": "registry.fedoraproject.org/fedora-toolbox:45",
+      "init_packages": [
+        "gcc",
+        "gcc-c++",
+        "clang",
+        "lld",
+        "mold",
+        "cmake",
+        "ninja-build",
+        "pkg-config",
+        "openssl-devel",
+        "rustup",
+        "gdb",
+        "lldb"
+      ],
+      "export_binaries": [
+        "cargo",
+        "rustc",
+        "rust-analyzer",
+        "rustup"
+      ]
+    },
+    "web": {
+      "name": "ender-web",
+      "description": "TypeScript, Node.js & Full-Stack Web dev container (nodejs, npm, pnpm, bun deps)",
+      "image": "registry.fedoraproject.org/fedora-toolbox:45",
+      "init_packages": [
+        "nodejs",
+        "npm",
+        "git",
+        "ripgrep",
+        "fd-find",
+        "sqlite",
+        "jq"
+      ],
+      "export_binaries": [
+        "node",
+        "npm",
+        "npx"
+      ]
+    },
+    "python": {
+      "name": "ender-python",
+      "description": "Python, AI/ML & Automation dev container (python3, uv/pip, ruff, sqlite, build-deps)",
+      "image": "registry.fedoraproject.org/fedora-toolbox:45",
+      "init_packages": [
+        "python3",
+        "python3-pip",
+        "python3-devel",
+        "gcc",
+        "gcc-c++",
+        "sqlite",
+        "uv"
+      ],
+      "export_binaries": [
+        "uv",
+        "pytest"
+      ]
+    },
+    "cpp": {
+      "name": "ender-cpp",
+      "description": "C/C++, Game Engine & Graphics dev container (clang, cmake, ninja, SDL2/Vulkan devel, valgrind)",
+      "image": "registry.fedoraproject.org/fedora-toolbox:45",
+      "init_packages": [
+        "gcc",
+        "gcc-c++",
+        "clang",
+        "clang-tools-extra",
+        "cmake",
+        "ninja-build",
+        "meson",
+        "vulkan-headers",
+        "vulkan-loader-devel",
+        "SDL2-devel",
+        "gdb",
+        "valgrind"
+      ],
+      "export_binaries": [
+        "clang",
+        "clang++",
+        "cmake",
+        "ninja"
+      ]
+    },
+    "arch-lab": {
+      "name": "ender-arch",
+      "description": "Arch Linux rolling container with base-devel & git for AUR tooling experiments",
+      "image": "ghcr.io/ublue-os/arch-distrobox:latest",
+      "init_packages": [
+        "base-devel",
+        "git",
+        "neovim"
+      ],
+      "export_binaries": []
+    }
+  }
+}

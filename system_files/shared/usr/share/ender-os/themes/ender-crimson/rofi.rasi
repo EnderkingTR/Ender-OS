@@ -1,0 +1,10 @@
+/* Ender Crimson — Rofi Colorscheme */
+* {
+    bg: #0c0b0eee;
+    surface: #18151d;
+    fg: #f4f1f8;
+    muted: #9a8f9e;
+    accent: #ff2a5f;
+    secondary: #ffb703;
+    border: #ff2a5faa;
+}
