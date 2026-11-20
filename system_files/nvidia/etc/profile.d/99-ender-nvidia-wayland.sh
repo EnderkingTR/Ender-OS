@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Ender-OS NVIDIA Open Wayland & Video Acceleration Environment
 if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
     export LIBVA_DRIVER_NAME="${LIBVA_DRIVER_NAME:-nvidia}"

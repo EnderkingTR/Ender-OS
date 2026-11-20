@@ -89,6 +89,12 @@ def check_lf_and_forbidden(errors: list[str]) -> None:
             if b"\r\n" in raw:
                 errors.append(f"CRLF line ending found in {rel}")
             text = raw.decode("utf-8", errors="strict")
+            if path.suffix == ".sh":
+                first_two = text.splitlines()[:2]
+                has_shebang = bool(first_two and first_two[0].startswith("#!"))
+                has_sc_directive = any(line.startswith("# shellcheck shell=") for line in first_two)
+                if not (has_shebang or has_sc_directive):
+                    errors.append(f"Shell script {rel} missing shebang or '# shellcheck shell=' directive")
             if rel.parts[0] != "docs" and rel.name != "README.md" and rel.as_posix() != "tests/validate_repo.py":
                 for pattern, reason in FORBIDDEN_PATTERNS:
                     if pattern in text:

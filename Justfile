@@ -98,7 +98,7 @@ build edition="hyprland" tag=default_tag:
         --label "io.artifacthub.package.keywords=${image_keywords}" \
         --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --label "org.opencontainers.image.description=${image_desc}" \
-        --tag "localhost/${image_name}:${tag}" \
+        --tag "localhost/${image_name}:{{ tag }}" \
         --file Containerfile \
         .
 
@@ -109,7 +109,7 @@ ostree-rechunk edition="hyprland" tag=default_tag:
     set -euo pipefail
     read -r _base_image _de _gpu_stack _target image_name <<< "$(just _resolve-edition "{{ edition }}")"
     local_ref="localhost/${image_name}:{{ tag }}"
-    graphroot="$(podman info --format '{{{{.Store.GraphRoot}}}}')"
+    graphroot="$(podman info --format '{{ '{{.Store.GraphRoot}}' }}')"
     podman run --rm --pull=never --privileged \
         --mount="type=image,src=${local_ref},target=/rpm-ostree" \
         --mount="type=bind,src=${graphroot},target=/run/host-container-storage,rw" \

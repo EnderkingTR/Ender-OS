@@ -10,6 +10,7 @@ dnf5 install -y \
     mesa-vulkan-drivers.i686 \
     mesa-dri-drivers \
     mesa-dri-drivers.i686 \
+    mesa-filesystem.i686 \
     mesa-libEGL.i686 \
     mesa-libGL.i686 \
     mesa-libgbm.i686 \

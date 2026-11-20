@@ -15,15 +15,14 @@ if [[ -n "${TARGET_KERNEL}" && "${CURRENT_KERNEL}" != "${TARGET_KERNEL}" ]]; the
 
     INSTALL_D="/usr/lib/kernel/install.d"
     if [[ -d "${INSTALL_D}" ]]; then
-        pushd "${INSTALL_D}" >/dev/null
         for hook in 05-rpmostree.install 50-dracut.install; do
-            if [[ -f "${hook}" ]]; then
-                mv "${hook}" "${hook}.bak"
-                printf '#!/bin/sh\nexit 0\n' > "${hook}"
-                chmod +x "${hook}"
+            hook_path="${INSTALL_D}/${hook}"
+            if [[ -f "${hook_path}" ]]; then
+                mv "${hook_path}" "${hook_path}.bak"
+                printf '#!/bin/sh\nexit 0\n' > "${hook_path}"
+                chmod +x "${hook_path}"
             fi
         done
-        popd >/dev/null
     fi
 
     dnf5 -y install \
@@ -34,13 +33,12 @@ if [[ -n "${TARGET_KERNEL}" && "${CURRENT_KERNEL}" != "${TARGET_KERNEL}" ]]; the
         "/tmp/akmods-kernel-rpms/kernel-modules-extra-${TARGET_KERNEL}.rpm"
 
     if [[ -d "${INSTALL_D}" ]]; then
-        pushd "${INSTALL_D}" >/dev/null
         for hook in 05-rpmostree.install 50-dracut.install; do
-            if [[ -f "${hook}.bak" ]]; then
-                mv -f "${hook}.bak" "${hook}"
+            hook_path="${INSTALL_D}/${hook}"
+            if [[ -f "${hook_path}.bak" ]]; then
+                mv -f "${hook_path}.bak" "${hook_path}"
             fi
         done
-        popd >/dev/null
     fi
 
     dnf5 versionlock add kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra || true
