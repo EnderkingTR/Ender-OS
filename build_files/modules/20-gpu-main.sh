@@ -14,6 +14,7 @@ dnf5 install -y \
     mesa-libEGL.i686 \
     mesa-libGL.i686 \
     mesa-libgbm.i686 \
-    mesa-va-drivers.i686 \
     libva-utils \
     libva-intel-media-driver
+
+dnf5 install -y --skip-unavailable mesa-va-drivers-freeworld.i686 || true

@@ -28,4 +28,4 @@ chmod 0755 /usr/bin/ender-ctl /usr/bin/ender-gamescope-session
 python3 -m py_compile /usr/bin/ender-ctl
 
 dnf5 clean all
-rm -rf /tmp/* /var/tmp/*
+find /var/tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true

@@ -15,5 +15,9 @@ dnf5 -y install --skip-unavailable \
 mkdir -p /etc/skel/.config/ender-os
 ln -sfn /usr/share/ender-os/themes/ender-obsidian /etc/skel/.config/ender-os/current-theme
 
-systemctl enable sddm.service
+if systemctl list-unit-files plasmalogin.service >/dev/null 2>&1; then
+    systemctl enable plasmalogin.service
+elif systemctl list-unit-files sddm.service >/dev/null 2>&1; then
+    systemctl enable sddm.service
+fi
 systemctl set-default graphical.target
