@@ -34,7 +34,7 @@ env:
   BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.edition || 'release' }}-${{ inputs.disk_type || 'iso' }}
   cancel-in-progress: true
 
 jobs:
