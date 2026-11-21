@@ -24,15 +24,13 @@ dnf5 install -y \
 
 echo "Installing Steam from rpmfusion-nonfree-steam (enabled strictly for build step)..."
 dnf5 install -y fedora-workstation-repositories || true
-if [[ -f /etc/yum.repos.d/rpmfusion-nonfree-steam.repo ]]; then
-    dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=1
-    if ! dnf5 -y --setopt=install_weak_deps=False install steam; then
-        dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=0 || true
-        exit 1
-    fi
-    dnf5 config-manager setopt rpmfusion-nonfree-steam.enabled=0
+if [[ -f /etc/yum.repos.d/rpmfusion-nonfree-steam.repo || -f /usr/share/dnf5/repos.d/rpmfusion-nonfree-steam.repo ]] || dnf5 repolist --all 2>/dev/null | grep -qw 'rpmfusion-nonfree-steam'; then
+    dnf5 -y --enablerepo=rpmfusion-nonfree-steam --setopt=install_weak_deps=False install steam
 else
-    echo "WARNING: rpmfusion-nonfree-steam.repo not found; Steam can be installed via Flathub fallback." >&2
+    RELEASE="$(rpm -E %fedora)"
+    dnf5 -y install "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${RELEASE}.noarch.rpm"
+    dnf5 -y --setopt=install_weak_deps=False install steam
+    dnf5 config-manager setopt "rpmfusion-nonfree*.enabled=0" || true
 fi
 
 echo "Installing optional sched_ext (scx-scheds) gaming CPU schedulers..."

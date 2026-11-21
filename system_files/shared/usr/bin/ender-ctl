@@ -527,12 +527,21 @@ def cmd_devbox(ctx: AppContext, args: argparse.Namespace) -> int:
     return 1
 
 
+def _has_flatpak_app(ctx: AppContext, app_id: str) -> bool:
+    if not ctx.which("flatpak"):
+        return False
+    res = ctx.runner(["flatpak", "info", app_id], capture=True)
+    return res.returncode == 0
+
+
 def cmd_gaming(ctx: AppContext, args: argparse.Namespace) -> int:
     action = args.gaming_action
     if action == "check":
+        steam_ok = ctx.which("steam") is not None or _has_flatpak_app(ctx, "com.valvesoftware.Steam")
+        lutris_ok = ctx.which("lutris") is not None or _has_flatpak_app(ctx, "net.lutris.Lutris")
         checks = {
-            "steam": ctx.which("steam") is not None,
-            "lutris": ctx.which("lutris") is not None,
+            "steam": steam_ok,
+            "lutris": lutris_ok,
             "gamescope": ctx.which("gamescope") is not None,
             "gamemoderun": ctx.which("gamemoderun") is not None,
             "mangohud": ctx.which("mangohud") is not None,

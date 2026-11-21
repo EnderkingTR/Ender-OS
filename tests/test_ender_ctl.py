@@ -36,6 +36,7 @@ class EnderCtlTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name)
         self.commands: list[list[str]] = []
+        self.flatpak_apps: set[str] = set()
         self.tools = {
             "powerprofilesctl": "/usr/bin/powerprofilesctl",
             "scxctl": "/usr/bin/scxctl",
@@ -70,6 +71,9 @@ class EnderCtlTestCase(unittest.TestCase):
         self.commands.append(cmd_list)
         if cmd_list[:2] == ["bootc", "status"]:
             return ender_ctl.CommandResult(returncode=0, stdout='{"spec":{"image":{"image":"ghcr.io/enderkingtr/ender-os-hyprland:latest"}}}')
+        if cmd_list[:2] == ["flatpak", "info"] and len(cmd_list) >= 3:
+            installed = cmd_list[2] in self.flatpak_apps
+            return ender_ctl.CommandResult(returncode=0 if installed else 1, stdout="")
         return ender_ctl.CommandResult(returncode=0, stdout="")
 
     def _run_cli(self, *argv: str) -> tuple[int, str, str]:
@@ -134,8 +138,15 @@ class EnderCtlTestCase(unittest.TestCase):
         rc, out, _ = self._run_cli("gaming", "check", "--json")
         self.assertEqual(rc, 0)
         checks = json.loads(out)
+        self.assertFalse(checks["steam"])
         self.assertTrue(checks["gamescope"])
         self.assertTrue(checks["mangohud"])
+
+        self.flatpak_apps.add("com.valvesoftware.Steam")
+        rc, out, _ = self._run_cli("gaming", "check", "--json")
+        self.assertEqual(rc, 0)
+        checks_after = json.loads(out)
+        self.assertTrue(checks_after["steam"])
 
         rc, out, _ = self._run_cli("gaming", "setup", "--group", "gaming", "--dry-run")
         self.assertEqual(rc, 0)
