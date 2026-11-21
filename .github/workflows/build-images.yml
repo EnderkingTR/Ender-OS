@@ -8,6 +8,8 @@ on:
       - "README.md"
       - "docs/**"
       - "LICENSE"
+      - ".github/workflows/build-iso.yml"
+      - "disk_config/**"
   pull_request:
     branches:
       - main
