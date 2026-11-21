@@ -14,14 +14,13 @@ on:
           - plasma
           - plasma-nvidia
       disk_type:
-        description: "Disk artifact type (anaconda-iso, vmdk, ova, qcow2)"
+        description: "Artifact type (live-iso = Live Desktop + Graphical Installer, vmdk = VMware Disk, qcow2 = QEMU Disk)"
         required: true
-        default: "anaconda-iso"
+        default: "live-iso"
         type: choice
         options:
-          - anaconda-iso
+          - live-iso
           - vmdk
-          - ova
           - qcow2
       tag:
         description: "Source OCI image tag in GHCR"
@@ -33,11 +32,9 @@ on:
 
 env:
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
-  # Pinned to the last multi-arch release with bootc CustomDepsolverDistro intact before osbuild/images#2172 broke anaconda-iso
-  BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:sha256-74ba1d6f7dfa83782623ddf3773e0f595db8c1a1a71dfa915be4d3918b27d963"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.edition || 'release' }}-${{ inputs.disk_type || 'iso' }}
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.edition || 'release' }}-${{ inputs.disk_type || 'live-iso' }}
   cancel-in-progress: true
 
 jobs:
@@ -55,7 +52,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
             echo 'editions=["hyprland","hyprland-nvidia","plasma","plasma-nvidia"]' >> "${GITHUB_OUTPUT}"
-            echo "disk_type=anaconda-iso" >> "${GITHUB_OUTPUT}"
+            echo "disk_type=live-iso" >> "${GITHUB_OUTPUT}"
             echo "tag=latest" >> "${GITHUB_OUTPUT}"
           else
             echo 'editions=["${{ inputs.edition }}"]' >> "${GITHUB_OUTPUT}"
@@ -67,6 +64,7 @@ jobs:
     name: Build ${{ needs.plan.outputs.disk_type }} (${{ matrix.edition }})
     needs: plan
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -89,29 +87,28 @@ jobs:
       - name: Prepare image references
         shell: bash
         run: |
-          USER_UID="$(id -u)"
-          USER_GID="$(id -g)"
+          set -euo pipefail
           IMAGE_NAME="ender-os-${{ matrix.edition }}"
           DISK_TYPE="${{ needs.plan.outputs.disk_type }}"
-          if [[ "${DISK_TYPE}" == "anaconda-iso" ]]; then
-            CONFIG_FILE="${PWD}/disk_config/iso-${{ matrix.edition }}.toml"
-          else
-            CONFIG_FILE="${PWD}/disk_config/disk.toml"
-          fi
           TARGET_IMAGE="${IMAGE_REGISTRY,,}/${IMAGE_NAME,,}:${{ needs.plan.outputs.tag }}"
-          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> "${GITHUB_ENV}"
-          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> "${GITHUB_ENV}"
-          echo "TARGET_IMAGE=${TARGET_IMAGE}" >> "${GITHUB_ENV}"
-          echo "CONFIG_FILE=${CONFIG_FILE}" >> "${GITHUB_ENV}"
-          echo "USER_UID=${USER_UID}" >> "${GITHUB_ENV}"
-          echo "USER_GID=${USER_GID}" >> "${GITHUB_ENV}"
+          LIVE_BASE_IMAGE="${IMAGE_REGISTRY,,}/ender-os-plasma:${{ needs.plan.outputs.tag }}"
+          mkdir -p "${PWD}/output/release"
+          df -h
+          {
+            echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}"
+            echo "IMAGE_NAME=${IMAGE_NAME,,}"
+            echo "DISK_TYPE=${DISK_TYPE}"
+            echo "TARGET_IMAGE=${TARGET_IMAGE}"
+            echo "LIVE_BASE_IMAGE=${LIVE_BASE_IMAGE}"
+          } >> "${GITHUB_ENV}"
 
-      - name: Build disk image with bootc-image-builder
+      - name: Build Live Installer container image
+        if: needs.plan.outputs.disk_type == 'live-iso'
         shell: bash
         run: |
           set -euo pipefail
           sudo rm -rf /var/lib/containers/storage
-          sudo mkdir -p /etc/containers "${PWD}/output"
+          sudo mkdir -p /etc/containers /var/tmp "${PWD}/output/release"
           sudo tee /etc/containers/storage.conf >/dev/null <<'EOF'
           [storage]
           driver = "overlay"
@@ -119,96 +116,95 @@ jobs:
           graphroot = "/var/lib/containers/storage"
           EOF
 
-          echo "Pulling target Ender-OS image (${TARGET_IMAGE}) and bootc-image-builder (${BIB_IMAGE})..."
-          sudo podman pull "${TARGET_IMAGE}"
-          sudo podman pull "${BIB_IMAGE}"
+          sudo env TMPDIR=/var/tmp podman build \
+            --no-cache \
+            --cap-add sys_admin \
+            --security-opt label=disable \
+            --build-arg "LIVE_BASE_IMAGE=${LIVE_BASE_IMAGE}" \
+            --build-arg "INSTALL_IMAGE_PAYLOAD=${TARGET_IMAGE}" \
+            --build-arg "TARGET_EDITION=${{ matrix.edition }}" \
+            --tag "localhost/ender-os-live:latest" \
+            disk_config/installer
+          df -h
 
-          echo "Normalizing container repo and GPG state for bootc-image-builder..."
-          sudo podman build --no-cache --build-arg "TARGET_IMAGE=${TARGET_IMAGE}" --tag "${TARGET_IMAGE}" - <<'EOF'
-          ARG TARGET_IMAGE
-          FROM ${TARGET_IMAGE}
-          RUN set -euo pipefail; \
-              if [[ ! -e /usr/bin/dnf && -x /usr/bin/dnf5 ]]; then ln -s dnf5 /usr/bin/dnf; fi; \
-              sed -i 's/^ID=.*/ID=fedora/' /usr/lib/os-release; \
-              mkdir -p /etc/yum.repos.d; \
-              for repo_name in fedora.repo fedora-updates.repo; do \
-                  if [[ ! -f "/etc/yum.repos.d/${repo_name}" && -f "/usr/share/dnf5/repos.d/${repo_name}" ]]; then \
-                      cp -f "/usr/share/dnf5/repos.d/${repo_name}" "/etc/yum.repos.d/${repo_name}"; \
-                  fi; \
-              done; \
-              for repo in \
-                  /etc/yum.repos.d/_copr*.repo \
-                  /etc/yum.repos.d/rpmfusion*.repo \
-                  /etc/yum.repos.d/*multimedia*.repo \
-                  /etc/yum.repos.d/*negativo17*.repo \
-                  /etc/yum.repos.d/fedora-cisco-openh264.repo \
-                  /etc/yum.repos.d/fedora-updates-archive.repo \
-                  /usr/share/dnf5/repos.d/_copr*.repo \
-                  /usr/share/dnf5/repos.d/rpmfusion*.repo \
-                  /usr/share/dnf5/repos.d/*multimedia*.repo \
-                  /usr/share/dnf5/repos.d/*negativo17*.repo \
-                  /usr/share/dnf5/repos.d/fedora-cisco-openh264.repo \
-                  /usr/share/dnf5/repos.d/fedora-updates-archive.repo; do \
-                  if [[ -f "${repo}" ]]; then sed -i 's/enabled=1/enabled=0/g' "${repo}"; fi; \
-              done; \
-              for repo in /etc/yum.repos.d/fedora.repo /etc/yum.repos.d/fedora-updates.repo; do \
-                  if [[ -f "${repo}" ]]; then \
-                      grep -q '^enabled=1' "${repo}" || sed -i '0,/enabled=0/{s/enabled=0/enabled=1/}' "${repo}"; \
-                  fi; \
-              done; \
-              for gpg_key in /etc/pki/rpm-gpg/* /usr/share/pki/rpm-gpg/*; do \
-                  if [[ -L "${gpg_key}" && -e "${gpg_key}" ]]; then \
-                      cp -f --remove-destination "$(readlink -f "${gpg_key}")" "${gpg_key}"; \
-                  fi; \
-              done; \
-              mkdir -p /usr/lib/bootc/install; \
-              printf '[install.filesystem.root]\ntype = "btrfs"\n' > /usr/lib/bootc/install/00-ender-os.toml; \
-              grep -Hn '^enabled=' /etc/yum.repos.d/*.repo || true; \
-              dnf check --duplicates
-          EOF
+      - name: Build Live ISO with Titanoboa
+        if: needs.plan.outputs.disk_type == 'live-iso'
+        uses: ublue-os/titanoboa@5c457c3d0518bd17e754be0fd98a60d29d26abb4
+        with:
+          image-ref: localhost/ender-os-live:latest
+          iso-dest: ${{ github.workspace }}/output/release/ender-os-${{ matrix.edition }}-x86_64.iso
 
-          sudo podman run \
-            --rm \
-            --privileged \
-            --security-opt label=type:unconfined_t \
-            --env IMAGE_BUILDER_EXPERIMENTAL="yamldir=/distrodefs" \
-            --volume /var/lib/containers/storage:/var/lib/containers/storage \
-            --volume "${PWD}/output:/output" \
-            --volume "${CONFIG_FILE}:/config.toml:ro" \
-            --volume "${PWD}/disk_config/distrodefs:/distrodefs:ro" \
-            "${BIB_IMAGE}" \
-            build \
-            --output /output \
-            --chown "${USER_UID}:${USER_GID}" \
-            --rootfs btrfs \
-            --use-librepo=True \
-            --config /config.toml \
-            --type "${{ needs.plan.outputs.disk_type }}" \
-            "${TARGET_IMAGE}"
-
-      - name: Rename artifact and generate SHA256SUMS
+      - name: Build VM disk image with bootc install to-disk
+        if: needs.plan.outputs.disk_type == 'vmdk' || needs.plan.outputs.disk_type == 'qcow2'
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-utils
+
+          sudo rm -rf /var/lib/containers/storage
+          sudo mkdir -p /etc/containers /var/tmp "${PWD}/output/release"
+          sudo tee /etc/containers/storage.conf >/dev/null <<'EOF'
+          [storage]
+          driver = "overlay"
+          runroot = "/run/containers/storage"
+          graphroot = "/var/lib/containers/storage"
+          EOF
+
+          sudo podman build \
+            --no-cache \
+            --build-arg "TARGET_IMAGE=${TARGET_IMAGE}" \
+            --tag "localhost/ender-os-vm:latest" \
+            - <<'EOF'
+          ARG TARGET_IMAGE
+          FROM ${TARGET_IMAGE}
+          RUN set -euo pipefail; \
+              id -u ender >/dev/null 2>&1 || useradd -m -G wheel -s /bin/bash ender; \
+              echo 'ender:ender' | chpasswd
+          EOF
+
           OUT_DIR="${PWD}/output"
-          ls -laR "${OUT_DIR}"
-          mkdir -p "${OUT_DIR}/release"
-          case "${{ needs.plan.outputs.disk_type }}" in
-            anaconda-iso)
-              mv "${OUT_DIR}/bootiso/install.iso" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.iso"
-              ;;
+          sudo truncate -s 20G "${OUT_DIR}/disk.raw"
+          sudo podman run \
+            --rm \
+            --privileged \
+            --pid=host \
+            --security-opt label=disable \
+            --volume /var/lib/containers:/var/lib/containers \
+            --volume /dev:/dev \
+            --volume "${OUT_DIR}:/output" \
+            localhost/ender-os-vm:latest \
+            bootc install to-disk \
+            --via-loopback \
+            --filesystem btrfs \
+            --generic-image \
+            --wipe \
+            --target-imgref "${TARGET_IMAGE}" \
+            /output/disk.raw
+
+          case "${DISK_TYPE}" in
             vmdk)
-              mv "${OUT_DIR}/vmdk/disk.vmdk" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.vmdk"
-              ;;
-            ova)
-              mv "${OUT_DIR}/archive/image.ova" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.ova"
+              sudo qemu-img convert -f raw -O vmdk -o subformat=monolithicSparse \
+                "${OUT_DIR}/disk.raw" \
+                "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.vmdk"
               ;;
             qcow2)
-              mv "${OUT_DIR}/qcow2/disk.qcow2" "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.qcow2"
+              sudo qemu-img convert -f raw -O qcow2 -c \
+                "${OUT_DIR}/disk.raw" \
+                "${OUT_DIR}/release/ender-os-${{ matrix.edition }}-x86_64.qcow2"
               ;;
           esac
+          sudo chown -R "$(id -u):$(id -g)" "${OUT_DIR}/release"
+          sudo rm -f "${OUT_DIR}/disk.raw"
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="${PWD}/output/release"
+          ls -lh "${RELEASE_DIR}"
           (
-            cd "${OUT_DIR}/release"
+            cd "${RELEASE_DIR}"
             sha256sum ender-os-* > "ender-os-${{ matrix.edition }}.SHA256SUMS"
           )
 

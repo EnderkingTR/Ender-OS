@@ -1,0 +1,19 @@
+# Live Desktop + Graphical Anaconda Installer image for Titanoboa ISO generation
+# Build with: sudo podman build --cap-add sys_admin --security-opt label=disable ...
+
+ARG LIVE_BASE_IMAGE="ghcr.io/enderkingtr/ender-os-plasma:latest"
+ARG INSTALL_IMAGE_PAYLOAD="ghcr.io/enderkingtr/ender-os-plasma:latest"
+ARG TARGET_EDITION="plasma"
+
+FROM ${LIVE_BASE_IMAGE}
+
+ARG LIVE_BASE_IMAGE
+ARG INSTALL_IMAGE_PAYLOAD
+ARG TARGET_EDITION
+
+RUN --mount=type=bind,source=.,target=/src \
+    env \
+    LIVE_BASE_IMAGE="${LIVE_BASE_IMAGE}" \
+    INSTALL_IMAGE_PAYLOAD="${INSTALL_IMAGE_PAYLOAD}" \
+    TARGET_EDITION="${TARGET_EDITION}" \
+    bash /src/build.sh
