@@ -34,7 +34,7 @@ EDITION_PRETTY="${DE_PRETTY} • ${GPU_PRETTY}"
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 IMAGE_REF="ghcr.io/enderkingtr/${FULL_IMAGE_NAME}:latest"
 
-# Update /usr/lib/os-release cleanly for Ender-OS identity while keeping Fedora compatibility
+# Update /usr/lib/os-release cleanly for Ender-OS identity while keeping ID=fedora for bootc-image-builder compatibility
 OS_RELEASE="/usr/lib/os-release"
 if [[ -f "${OS_RELEASE}" ]]; then
     sed -i \
@@ -44,6 +44,7 @@ if [[ -f "${OS_RELEASE}" ]]; then
         -e '/^ID_LIKE=/d' \
         -e '/^VARIANT=/d' \
         -e '/^VARIANT_ID=/d' \
+        -e '/^DEFAULT_HOSTNAME=/d' \
         -e '/^HOME_URL=/d' \
         -e '/^DOCUMENTATION_URL=/d' \
         -e '/^SUPPORT_URL=/d' \
@@ -55,10 +56,11 @@ fi
 cat >> "${OS_RELEASE}" <<EOF
 NAME="Ender-OS"
 PRETTY_NAME="Ender-OS ${FEDORA_VERSION} (${EDITION_PRETTY})"
-ID="ender-os"
+ID=fedora
 ID_LIKE="fedora"
 VARIANT="${EDITION_PRETTY}"
-VARIANT_ID="${VARIANT_ID}"
+VARIANT_ID="ender-os-${VARIANT_ID}"
+DEFAULT_HOSTNAME="ender-os"
 OSTREE_VERSION="${IMAGE_VERSION}"
 HOME_URL="https://github.com/EnderkingTR/Ender-OS"
 DOCUMENTATION_URL="https://github.com/EnderkingTR/Ender-OS/blob/main/docs/ARCHITECTURE.md"
