@@ -128,11 +128,24 @@ jobs:
           df -h
 
       - name: Build Live ISO with Titanoboa
+        id: build-iso
         if: needs.plan.outputs.disk_type == 'live-iso'
         uses: ublue-os/titanoboa@5c457c3d0518bd17e754be0fd98a60d29d26abb4
         with:
           image-ref: localhost/ender-os-live:latest
-          iso-dest: ${{ github.workspace }}/output/release/ender-os-${{ matrix.edition }}-x86_64.iso
+          iso-dest: ender-os-${{ matrix.edition }}-x86_64.iso
+
+      - name: Stage Live ISO in release directory
+        if: needs.plan.outputs.disk_type == 'live-iso'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ISO_SRC="${{ steps.build-iso.outputs.iso-dest }}"
+          ISO_DST="${PWD}/output/release/ender-os-${{ matrix.edition }}-x86_64.iso"
+          mkdir -p "${PWD}/output/release"
+          if [[ "$(realpath "${ISO_SRC}")" != "$(realpath -m "${ISO_DST}")" ]]; then
+            mv -v "${ISO_SRC}" "${ISO_DST}"
+          fi
 
       - name: Build VM disk image with bootc install to-disk
         if: needs.plan.outputs.disk_type == 'vmdk' || needs.plan.outputs.disk_type == 'qcow2'
@@ -205,7 +218,8 @@ jobs:
           ls -lh "${RELEASE_DIR}"
           (
             cd "${RELEASE_DIR}"
-            sha256sum ender-os-* > "ender-os-${{ matrix.edition }}.SHA256SUMS"
+            sha256sum "ender-os-${{ matrix.edition }}-x86_64."* > "ender-os-${{ matrix.edition }}.SHA256SUMS"
+            cat "ender-os-${{ matrix.edition }}.SHA256SUMS"
           )
 
       - name: Upload workflow artifact
