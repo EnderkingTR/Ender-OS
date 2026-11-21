@@ -252,6 +252,30 @@ def _link_theme_dir(target: Path, link_path: Path) -> None:
             raise
 
 
+def _ensure_user_defaults(ctx: AppContext) -> None:
+    """Self-heal user profile, theme config, and current-theme symlink on first login or after bootc switch."""
+    try:
+        if not ctx.profile_file.is_file():
+            ctx.user_config_dir.mkdir(parents=True, exist_ok=True)
+            ctx.profile_file.write_text(f"{DEFAULT_PROFILE}\n", encoding="utf-8")
+        if not ctx.theme_file.is_file():
+            ctx.user_config_dir.mkdir(parents=True, exist_ok=True)
+            ctx.theme_file.write_text(f"{DEFAULT_THEME}\n", encoding="utf-8")
+        active_theme = _read_text_choice(ctx.theme_file, DEFAULT_THEME)
+        target_theme_dir = ctx.themes_dir / active_theme
+        if not target_theme_dir.is_dir():
+            target_theme_dir = ctx.themes_dir / DEFAULT_THEME
+        if target_theme_dir.is_dir() and not ctx.current_theme_link.exists():
+            _link_theme_dir(target_theme_dir, ctx.current_theme_link)
+    except OSError:
+        pass
+
+
+def cmd_init(ctx: AppContext, _args: argparse.Namespace) -> int:
+    _ensure_user_defaults(ctx)
+    return 0
+
+
 def _notify_user(ctx: AppContext, title: str, body: str, dry_run: bool) -> None:
     if dry_run or not ctx.which("notify-send"):
         return
@@ -705,6 +729,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor = sub.add_parser("doctor", help="Run Ender-OS system diagnostics")
     p_doctor.add_argument("--json", action="store_true", help="Emit JSON output")
 
+    sub.add_parser("init", help="Initialize or self-heal user profile and theme defaults")
+
     return parser
 
 
@@ -712,6 +738,7 @@ def main(argv: Sequence[str] | None = None, ctx: AppContext | None = None) -> in
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     app_ctx = ctx or AppContext()
+    _ensure_user_defaults(app_ctx)
 
     handlers = {
         "status": cmd_status,
@@ -723,6 +750,7 @@ def main(argv: Sequence[str] | None = None, ctx: AppContext | None = None) -> in
         "rollback": cmd_rollback,
         "switch": cmd_switch,
         "doctor": cmd_doctor,
+        "init": cmd_init,
     }
     handler = handlers[args.command]
     return handler(app_ctx, args)

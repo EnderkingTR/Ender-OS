@@ -38,6 +38,8 @@ FORBIDDEN_PATTERNS = (
     ("ublue-os/base-nvidia", "Deprecated retired NVIDIA base image"),
     ("ublue-os/kinoite-nvidia", "Deprecated retired NVIDIA base image"),
     ("solopasha/hyprland", "Abandoned Hyprland COPR repository"),
+    ("windowrulev2", "Deprecated Hyprland v2 rule syntax removed in Hyprland 0.54+"),
+    ("new_optimizations", "Deprecated Hyprland blur option removed in Hyprland 0.50+"),
 )
 
 
@@ -164,6 +166,14 @@ def check_containerfile_and_editions(errors: list[str]) -> None:
             expected_ref = f"ghcr.io/enderkingtr/ender-os-{edition}:latest"
             if expected_ref not in iso_toml.read_text(encoding="utf-8"):
                 errors.append(f"{iso_toml.relative_to(ROOT)} missing '{expected_ref}'")
+
+    for distrodef_rel in (
+        Path("disk_config/distrodefs/fedora.yaml"),
+        Path("disk_config/distrodefs/bootc-generic/imagetypes.yaml"),
+        Path("disk_config/distrodefs/fedora/imagetypes.yaml"),
+    ):
+        if not (ROOT / distrodef_rel).is_file():
+            errors.append(f"Missing bootc-image-builder distrodef file: {distrodef_rel.as_posix()}")
 
     workflows_dir = ROOT / ".github" / "workflows"
     for wf_name in ("ci.yml", "build-images.yml", "build-iso.yml"):

@@ -9,7 +9,9 @@ for unit in \
     tuned.service \
     tuned-ppd.service \
     power-profiles-daemon.service \
-    systemd-oomd.service; do
+    systemd-oomd.service \
+    vmtoolsd.service \
+    qemu-guest-agent.service; do
     if systemctl list-unit-files "${unit}" >/dev/null 2>&1; then
         systemctl enable "${unit}"
     fi

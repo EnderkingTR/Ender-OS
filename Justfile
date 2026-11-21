@@ -155,7 +155,9 @@ _build-bib edition tag type config:
         --privileged \
         --pull=newer \
         --security-opt label=type:unconfined_t \
+        -e IMAGE_BUILDER_EXPERIMENTAL="yamldir=/distrodefs" \
         -v "${PWD}/{{ config }}:/config.toml:ro" \
+        -v "${PWD}/disk_config/distrodefs:/distrodefs:ro" \
         -v "${PWD}/output:/output" \
         -v /var/lib/containers/storage:/var/lib/containers/storage \
         "${bib_image}" \
@@ -172,3 +174,11 @@ build-iso edition="hyprland" tag=default_tag: (_build-bib edition tag "anaconda-
 # Build a QCOW2 VM disk image for an Ender-OS edition
 [group('Build Disk')]
 build-qcow2 edition="hyprland" tag=default_tag: (_build-bib edition tag "qcow2" "disk_config/disk.toml")
+
+# Build a VMware Workstation VMDK virtual disk image for an Ender-OS edition
+[group('Build Disk')]
+build-vmdk edition="hyprland" tag=default_tag: (_build-bib edition tag "vmdk" "disk_config/disk.toml")
+
+# Build a VMware / VirtualBox OVA appliance for an Ender-OS edition
+[group('Build Disk')]
+build-ova edition="hyprland" tag=default_tag: (_build-bib edition tag "ova" "disk_config/disk.toml")

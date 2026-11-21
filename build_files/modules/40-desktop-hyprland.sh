@@ -54,16 +54,6 @@ fi
 
 dnf5 -y install --skip-unavailable papirus-icon-theme || true
 
-mkdir -p /usr/lib/sddm/sddm.conf.d
-cat > /usr/lib/sddm/sddm.conf.d/10-ender-wayland.conf <<'EOF'
-[General]
-DisplayServer=wayland
-GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
-
-[Wayland]
-CompositorCommand=weston --shell=kiosk-shell.so
-EOF
-
 # Seed default active theme symlink inside /etc/skel for new users
 mkdir -p /etc/skel/.config/ender-os
 ln -sfn /usr/share/ender-os/themes/ender-obsidian /etc/skel/.config/ender-os/current-theme

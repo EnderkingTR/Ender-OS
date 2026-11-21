@@ -173,6 +173,17 @@ class EnderCtlTestCase(unittest.TestCase):
         self.assertTrue(doctor["healthy"])
         self.assertGreaterEqual(len(doctor["checks"]), 8)
 
+    def test_init_self_heals_missing_user_defaults(self) -> None:
+        self.assertFalse(self.ctx.profile_file.exists())
+        self.assertFalse(self.ctx.theme_file.exists())
+        self.assertFalse(self.ctx.current_theme_link.exists())
+
+        rc, _, _ = self._run_cli("init")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.ctx.profile_file.read_text(encoding="utf-8").strip(), "balanced")
+        self.assertEqual(self.ctx.theme_file.read_text(encoding="utf-8").strip(), "ender-obsidian")
+        self.assertTrue((self.ctx.current_theme_link / "theme.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,11 @@ dnf5 install -y \
     openssh-clients \
     NetworkManager-tui \
     firewalld \
+    flatpak \
+    open-vm-tools \
+    open-vm-tools-desktop \
+    qemu-guest-agent \
+    spice-vdagent \
     python3 \
     python3-pip
 
