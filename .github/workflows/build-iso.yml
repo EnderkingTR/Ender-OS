@@ -124,22 +124,47 @@ jobs:
           sudo podman pull "${BIB_IMAGE}"
 
           echo "Normalizing container repo and GPG state for bootc-image-builder..."
-          sudo podman build --no-cache --tag "${TARGET_IMAGE}" - <<EOF
+          sudo podman build --no-cache --build-arg "TARGET_IMAGE=${TARGET_IMAGE}" --tag "${TARGET_IMAGE}" - <<'EOF'
+          ARG TARGET_IMAGE
           FROM ${TARGET_IMAGE}
           RUN set -euo pipefail; \
               if [[ ! -e /usr/bin/dnf && -x /usr/bin/dnf5 ]]; then ln -s dnf5 /usr/bin/dnf; fi; \
               sed -i 's/^ID=.*/ID=fedora/' /usr/lib/os-release; \
-              for repo in /etc/yum.repos.d/_copr*.repo /etc/yum.repos.d/rpmfusion*.repo /etc/yum.repos.d/*multimedia*.repo /etc/yum.repos.d/*negativo17*.repo /etc/yum.repos.d/fedora-cisco-openh264.repo /etc/yum.repos.d/fedora-updates-archive.repo; do \
-                  if [[ -f "\${repo}" ]]; then sed -i 's/enabled=1/enabled=0/g' "\${repo}"; fi; \
+              mkdir -p /etc/yum.repos.d; \
+              for repo_name in fedora.repo fedora-updates.repo; do \
+                  if [[ ! -f "/etc/yum.repos.d/${repo_name}" && -f "/usr/share/dnf5/repos.d/${repo_name}" ]]; then \
+                      cp -f "/usr/share/dnf5/repos.d/${repo_name}" "/etc/yum.repos.d/${repo_name}"; \
+                  fi; \
+              done; \
+              for repo in \
+                  /etc/yum.repos.d/_copr*.repo \
+                  /etc/yum.repos.d/rpmfusion*.repo \
+                  /etc/yum.repos.d/*multimedia*.repo \
+                  /etc/yum.repos.d/*negativo17*.repo \
+                  /etc/yum.repos.d/fedora-cisco-openh264.repo \
+                  /etc/yum.repos.d/fedora-updates-archive.repo \
+                  /usr/share/dnf5/repos.d/_copr*.repo \
+                  /usr/share/dnf5/repos.d/rpmfusion*.repo \
+                  /usr/share/dnf5/repos.d/*multimedia*.repo \
+                  /usr/share/dnf5/repos.d/*negativo17*.repo \
+                  /usr/share/dnf5/repos.d/fedora-cisco-openh264.repo \
+                  /usr/share/dnf5/repos.d/fedora-updates-archive.repo; do \
+                  if [[ -f "${repo}" ]]; then sed -i 's/enabled=1/enabled=0/g' "${repo}"; fi; \
               done; \
               for repo in /etc/yum.repos.d/fedora.repo /etc/yum.repos.d/fedora-updates.repo; do \
-                  if [[ -f "\${repo}" ]]; then sed -i '0,/enabled=0/{s/enabled=0/enabled=1/}' "\${repo}"; fi; \
+                  if [[ -f "${repo}" ]]; then \
+                      grep -q '^enabled=1' "${repo}" || sed -i '0,/enabled=0/{s/enabled=0/enabled=1/}' "${repo}"; \
+                  fi; \
               done; \
-              for gpg_key in /etc/pki/rpm-gpg/*; do \
-                  if [[ -L "\${gpg_key}" && -e "\${gpg_key}" ]]; then cp -f --remove-destination "\$(readlink -f "\${gpg_key}")" "\${gpg_key}"; fi; \
+              for gpg_key in /etc/pki/rpm-gpg/* /usr/share/pki/rpm-gpg/*; do \
+                  if [[ -L "${gpg_key}" && -e "${gpg_key}" ]]; then \
+                      cp -f --remove-destination "$(readlink -f "${gpg_key}")" "${gpg_key}"; \
+                  fi; \
               done; \
               mkdir -p /usr/lib/bootc/install; \
-              printf '[install.filesystem.root]\ntype = "btrfs"\n' > /usr/lib/bootc/install/00-ender-os.toml
+              printf '[install.filesystem.root]\ntype = "btrfs"\n' > /usr/lib/bootc/install/00-ender-os.toml; \
+              grep -Hn '^enabled=' /etc/yum.repos.d/*.repo || true; \
+              dnf check --duplicates
           EOF
 
           sudo podman run \
